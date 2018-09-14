@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta
 from calendar import timegm
+from datetime import datetime, timedelta
 from functools import wraps
 
-from errors import (InvalidAccessTokenError, InvalidRefreshTokenError,
-                    TokenCompromisedError, AccessTokenNotExpiredError)
-
 import jwt
-from flask import request, jsonify, make_response
+from flask import jsonify, make_response, request
+
+from errors import (AccessTokenNotExpiredError, InvalidAccessTokenError,
+                    InvalidRefreshTokenError, TokenCompromisedError)
 
 
 class TokenSchema(object):
@@ -23,12 +23,15 @@ class TokenSchema(object):
         self.refresh_token_cookie_name = refresh_token_cookie_name
         self.access_token_cookie_name = access_token_cookie_name
         self.verify_refresh_token_callback = None
+        self.user_has_refresh_tokens_callback = None
         self.refresh_token_compromised_callback = None
         self.after_new_access_token_generated_callback = None
         self.invalid_access_token_error_callback = None
         self.invalid_refresh_token_error_callback = None
         self.compromised_tokens_error_callback = None
         self.access_token_not_expired_error_callback = None
+        self.revoke_user_refresh_tokens_callback = None
+        self.create_refresh_token_callback = None
 
     def generate_jwt_token(self, user_id, exp=60, **kwargs):
         """Generate a JWT token
@@ -54,7 +57,7 @@ class TokenSchema(object):
         """
         return exp < timegm(datetime.utcnow().utctimetuple())
 
-    def decode_jwt_token(self, token, options={}):
+    def decode_jwt_token(self, token, options=None):
         """Decodes jwt Token
 
         :param token: token to verify
@@ -68,34 +71,6 @@ class TokenSchema(object):
 
         return jwt_claims
 
-    def verify_refresh_token(self, f):
-        self.verify_refresh_token_callback = f
-        return f
-
-    def refresh_token_compromised(self, f):
-        self.refresh_token_compromised_callback = f
-        return f
-
-    def after_new_access_token_generated(self, f):
-        self.after_new_access_token_generated_callback = f
-        return f
-
-    def invalid_access_token_error(self, f):
-        self.invalid_access_token_error_callback = f
-        return f
-
-    def invalid_refresh_token_error(self, f):
-        self.invalid_refresh_token_error_callback = f
-        return f
-
-    def compromised_tokens_error(self, f):
-        self.compromised_tokens_error_callback = f
-        return f
-    
-    def access_token_not_expired_error(self, f):
-        self.access_token_not_expired_error_callback = f
-        return f
-
     def generate_access_token(self, refresh_token, access_token):
         """ Generates access token from refresh token
 
@@ -103,7 +78,7 @@ class TokenSchema(object):
         :param access_token: access token
         """
 
-        if self.verify_refresh_token_callback(refresh_token):
+        if not self.verify_refresh_token_callback(refresh_token):
             raise InvalidRefreshTokenError()
 
         if self.refresh_token_compromised_callback(refresh_token,
@@ -118,7 +93,7 @@ class TokenSchema(object):
         except:
             raise InvalidAccessTokenError()
 
-        if not self.access_token_expired(access_token):
+        if not self.access_token_expired(jwt_claims["exp"]):
             raise AccessTokenNotExpiredError()
 
         new_access_token = self.generate_jwt_token(jwt_claims["user_id"])
@@ -129,19 +104,20 @@ class TokenSchema(object):
 
         return new_access_token
 
-    def set_session_tokens(self, response, username):
+    def set_session_tokens(self, response, user_id):
         """Sets session tokens (access and refresh) in cookies
 
         :param response: response object
-        :param username: user username to attach to jwt
+        :param user_id: user user_id to attach to jwt
         """
 
-        if self.user_has_refresh_tokens_callback():
-            self.revoke_user_refresh_tokens_callback(username)
+        if self.user_has_refresh_tokens_callback(user_id):
+            self.revoke_user_refresh_tokens_callback(user_id=user_id)
             return
 
-        access_token = self.generate_jwt_token(username)
-        refresh_token = self.create_refresh_token_callback(access_token)
+        access_token = self.generate_jwt_token(user_id)
+        refresh_token = self.create_refresh_token_callback(
+            user_id, access_token)
 
         response.set_cookie(
             self.access_token_cookie_name, access_token, httponly=True)
@@ -173,7 +149,6 @@ class TokenSchema(object):
         return f_wrapper
 
     def refresh_access_token(self, f):
-
         @wraps(f)
         def f_wrapper(*args, **kwargs):
             if not (self.refresh_token_cookie_name in request.cookies
@@ -195,6 +170,8 @@ class TokenSchema(object):
                 if self.invalid_access_token_error_callback is not None:
                     self.invalid_access_token_error_callback(
                         refresh_token, access_token)
+                    self.revoke_user_refresh_tokens_callback(
+                        refresh_token=refresh_token)
                 return jsonify({"message": "invalid token provided"}), 401
             except InvalidRefreshTokenError:
                 if self.invalid_refresh_token_error_callback is not None:
@@ -205,11 +182,14 @@ class TokenSchema(object):
                 if self.compromised_tokens_error_callback is not None:
                     self.compromised_tokens_error_callback(
                         refresh_token, access_token)
+                self.revoke_user_refresh_tokens_callback(refresh_token=refresh_token)
                 return jsonify({"message": "compromised refresh token"}), 401
             except AccessTokenNotExpiredError:
                 if self.access_token_not_expired_error_callback is not None:
                     self.access_token_not_expired_error_callback(
                         refresh_token, access_token)
+                self.revoke_user_refresh_tokens_callback(
+                    refresh_token=refresh_token)
                 return jsonify({
                     "message":
                     "user might be compromised, access revoked"
@@ -225,4 +205,54 @@ class TokenSchema(object):
                 "access_token", new_access_token, httponly=True)
 
             return response
+
         return f_wrapper
+
+    def verify_refresh_token(self, f):
+        self.verify_refresh_token_callback = f
+        return f
+
+    def refresh_token_compromised(self, f):
+        self.refresh_token_compromised_callback = f
+        return f
+
+    def after_new_access_token_generated(self, f):
+        self.after_new_access_token_generated_callback = f
+        return f
+
+    def invalid_access_token_error(self, f):
+        self.invalid_access_token_error_callback = f
+        return f
+
+    def invalid_refresh_token_error(self, f):
+        self.invalid_refresh_token_error_callback = f
+        return f
+
+    def compromised_tokens_error(self, f):
+        self.compromised_tokens_error_callback = f
+        return f
+
+    def access_token_not_expired_error(self, f):
+        self.access_token_not_expired_error_callback = f
+        return f
+
+    def user_has_refresh_tokens(self, f):
+        """check if user has any active refresh token
+        :param user_id
+        """
+        self.user_has_refresh_tokens_callback = f
+        return f
+
+    def revoke_user_refresh_tokens(self, f):
+        """ revoke all user refresh tokens
+        
+        function should have as params user_id="" and refresh_token=""
+        to find user id associated with refresh_token if user_id is not
+        provided
+        """
+        self.revoke_user_refresh_tokens_callback = f
+        return f
+
+    def create_refresh_token(self, f):
+        self.create_refresh_token_callback = f
+        return f
