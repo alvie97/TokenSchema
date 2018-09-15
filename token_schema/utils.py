@@ -27,7 +27,7 @@ def set_token_cookies(response, user_id, access_token_claims=None):
     :param user_id: user user_id to attach to jwt
     """
     tok_schema = get_token_schema()
-    tok_schema.revoke_user_refresh_tokens_callback(user_id=user_id)
+    tok_schema.revoke_user_refresh_tokens_callback(user_id)
 
     access_token = create_access_token(
         user_id,

@@ -20,6 +20,10 @@ class TokenSchema(object):
 
         :param app: Flask app
         """
+        self.create_refresh_token_callback = None
+        self.verify_refresh_token_callback = None
+        self.revoke_user_refresh_tokens_callback = None
+        self.compromised_tokens_callback = None
 
         if app is not None:
             self.init_app(app)
@@ -108,12 +112,15 @@ class TokenSchema(object):
                 self.new_access_token_created_callback(new_access_token,
                                                        refresh_token)
 
-        # * return new access_token
+        # return new access_token
         return new_access_token
 
     def create_refresh_token(self, callback):
         """
-        Sets callback to create refresh tokens.
+        Sets callback to create refresh tokens. Returns the refresh token
+        string.
+
+        *Note*: Callback must return the new refresh token string
         """
 
         self.create_refresh_token_callback = callback
@@ -122,6 +129,9 @@ class TokenSchema(object):
     def verify_refresh_token(self, callback):
         """
         Sets callback for verifying if refresh token is valid.
+
+        *Note*: Callback will be given the refresh token string and must return
+        True if the refresh token is valid, False otherwise.
         """
 
         self.verify_refresh_token_callback = callback
@@ -132,6 +142,9 @@ class TokenSchema(object):
         Sets callback that verifies if a token has been compromised.
         It is called when trying to create a new access token using the refresh
         token.
+
+        *Note*: Callback will be given the refresh token and access token, and
+        must return True if either is compromised False otherwise.
         """
 
         self.compromised_tokens_callback = callback
@@ -140,7 +153,10 @@ class TokenSchema(object):
     def revoke_user_refresh_tokens(self, callback):
         """
         Sets callback that revokes all active refresh tokens owned by the user.
-        It is called if the refresh token has been compromised.
+        It is called if the refresh token has been compromised and before 
+        setting a new refresh token.
+
+        *Note*: Callback will be given the user identifier
         """
 
         self.revoke_user_refresh_tokens_callback = callback
