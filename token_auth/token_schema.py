@@ -5,7 +5,7 @@ import jwt
 from flask import jsonify, make_response, request
 
 from .errors import (AccessTokenNotExpiredError, InvalidAccessTokenError,
-                    InvalidRefreshTokenError, TokenCompromisedError)
+                     InvalidRefreshTokenError, TokenCompromisedError)
 
 from .access_token import AccessToken
 from .refresh_token import RefreshToken
@@ -40,8 +40,15 @@ class TokenSchema(object):
         if not self.refresh_token.verify_refresh_token_callback(refresh_token):
             raise InvalidRefreshTokenError()
 
-        if self.refresh_token.refresh_token_compromised_callback(
-                refresh_token, access_token):
+        try:
+            refresh_token_compromised = self.refresh_token \
+                .refresh_token_compromised_callback(refresh_token)
+        except TypeError:
+            refresh_token_compromised = self.refresh_token \
+                .refresh_token_compromised_callback(
+                    refresh_token, access_token)
+
+        if refresh_token_compromised:
             raise TokenCompromisedError()
 
         jwt_claims = {}
@@ -64,20 +71,20 @@ class TokenSchema(object):
 
         return new_access_token
 
-    def set_session_tokens(self, response, user_id, access_token_claims=None):
+    def set_token_cookies(self, response, user_id, access_token_claims=None):
         """Sets session tokens (access and refresh) in cookies
 
         :param response: response object
         :param user_id: user user_id to attach to jwt
         """
 
-        if self.refresh_token.user_has_refresh_tokens_callback(user_id):
-            self.refresh_token.revoke_user_refresh_tokens_callback(
-                user_id=user_id)
-            return
+        self.refresh_token.revoke_user_refresh_tokens_callback(user_id=user_id)
 
         access_token = self.access_token.generate_jwt_token(
             user_id, access_token_claims or {}, self.access_token_duration)
+        
+        if self.after_new_access_token_generated_callback is not None:
+            self.after_new_access_token_generated_callback(access_token)
 
         refresh_token = self.refresh_token.create_refresh_token_callback(
             user_id, access_token)
@@ -167,8 +174,7 @@ class TokenSchema(object):
                 self.refresh_token.revoke_user_refresh_tokens_callback(
                     refresh_token=refresh_token)
                 return jsonify({
-                    "message":
-                    "user might be compromised, access revoked"
+                    "message": "user might be compromised, access revoked"
                 }), 401
 
             f(*args, **kwargs)

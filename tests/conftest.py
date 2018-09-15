@@ -33,7 +33,6 @@ def tok_schema(app, refresh_tokens):
     with app.app_context():
         tok_schema = TokenSchema(secure_cookies_only=False)
 
-    
     def find_refresh_token(token):
         for tok in refresh_tokens:
             if tok["token"] == token:
@@ -42,8 +41,8 @@ def tok_schema(app, refresh_tokens):
     @tok_schema.refresh_token.verify_refresh_token
     def verify_token(token):
         tok = find_refresh_token(token)
-        return tok is not None and not (
-            tok["expires_at"] < datetime.utcnow() or tok["revoked"])
+        return tok is not None and not (tok["expires_at"] < datetime.utcnow()
+                                        or tok["revoked"])
 
     @tok_schema.refresh_token.refresh_token_compromised
     def refresh_token_compromised(refresh_token, access_token):
@@ -78,16 +77,11 @@ def tok_schema(app, refresh_tokens):
     def create_refresh_token(user_id, access_token):
         token = str(uuid4())
         refresh_tokens.append({
-            "token":
-            token,
-            "mapped_token":
-            access_token,
-            "user_id":
-            user_id,
-            "expires_at":
-            datetime.utcnow() + timedelta(days=7),
-            "revoked":
-            False
+            "token": token,
+            "mapped_token": access_token,
+            "user_id": user_id,
+            "expires_at": datetime.utcnow() + timedelta(days=7),
+            "revoked": False
         })
 
         return token

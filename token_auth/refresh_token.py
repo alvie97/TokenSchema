@@ -3,7 +3,6 @@ class RefreshToken(object):
 
     def __init__(self):
         self.verify_refresh_token_callback = None
-        self.user_has_refresh_tokens_callback = None
         self.refresh_token_compromised_callback = None
         self.revoke_user_refresh_tokens_callback = None
         self.create_refresh_token_callback = None
@@ -19,13 +18,6 @@ class RefreshToken(object):
 
     def invalid_refresh_token_error(self, f):
         self.invalid_refresh_token_error_callback = f
-        return f
-
-    def user_has_refresh_tokens(self, f):
-        """check if user has any active refresh token
-        :param user_id
-        """
-        self.user_has_refresh_tokens_callback = f
         return f
 
     def revoke_user_refresh_tokens(self, f):
