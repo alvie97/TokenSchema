@@ -1,9 +1,11 @@
 from functools import wraps
+from datetime import datetime
 
 from flask import current_app, jsonify, request, _app_ctx_stack
 from jwt import ExpiredSignatureError
 
-from .exceptions import (InvalidAccessTokenError, InvalidRefreshTokenError)
+from .exceptions import (AccessTokenNotExpiredError, InvalidAccessTokenError,
+                         InvalidRefreshTokenError, TokenCompromisedError)
 from .tokens import create_access_token, decode_jwt
 
 
@@ -17,6 +19,66 @@ def get_token_schema():
     except KeyError:
         raise RuntimeError("TokenSchema must be initialized "
                            "with the flask app")
+
+
+def create_fresh_access_token(refresh_token, access_token):
+    """
+    Generates access token using refresh token. Access token is generated
+    if all checks are passed.
+
+    :param refresh_token: the refresh token used to generated a fresh
+                            access token.
+    :param access_token: expired access token used for validation
+    """
+
+    tok_schema = get_token_schema()
+
+    # validate access token and if access token is not expired, if it is
+    # not expired return access token or handler
+    access_token_claims = {}
+    try:
+        decode_jwt(access_token, current_app.config["JWT_SECRET"],
+                   current_app.config["JWT_ALGORITHM"])
+
+        return access_token
+    except ExpiredSignatureError:
+        access_token_claims = decode_jwt(
+            access_token,
+            current_app.config["JWT_SECRET"],
+            current_app.config["JWT_ALGORITHM"],
+            options={"verify_exp": False})
+    except:
+        # validate refresh token, if refresh token is valid but access
+        # token is invalid, the refresh token has been compromised
+        if not tok_schema.verify_refresh_token_callback(refresh_token):
+            raise AccessTokenNotExpiredError
+
+        raise TokenCompromisedError("Refresh token is compromised")
+
+    if not tok_schema.verify_refresh_token_callback(refresh_token):
+        raise InvalidAccessTokenError
+
+    # check if refresh token is mapped to access token and run the
+    # compromised_refresh_token_callback if defined
+    if tok_schema.compromised_tokens_callback(refresh_token, access_token):
+        raise TokenCompromisedError(
+            "refresh token and access token compromised")
+    # generate new access token
+    new_access_token = create_access_token(
+        access_token_claims["user_id"], current_app.config["JWT_SECRET"],
+        current_app.config["JWT_ALGORITHM"],
+        current_app.config["ACCESS_TOKEN_DURATION"])
+
+    # run new_access_token_created_callback if defined
+    if tok_schema.after_new_access_token_created_callback is not None:
+        try:
+            tok_schema.after_new_access_token_created_callback(access_token)
+        except TypeError:
+            tok_schema.after_new_access_token_created_callback(
+                access_token, refresh_token)
+
+    # return new access_token
+    return new_access_token
 
 
 def set_token_cookies(response, user_id, access_token_claims=None):
@@ -39,23 +101,25 @@ def set_token_cookies(response, user_id, access_token_claims=None):
     refresh_token = tok_schema.create_refresh_token_callback(
         user_id, access_token)
 
-    if tok_schema.after_new_access_token_generated_callback is not None:
+    if tok_schema.after_new_access_token_created_callback is not None:
         try:
-            tok_schema.after_new_access_token_generated_callback(access_token)
-        except KeyError:
-            tok_schema.after_new_access_token_generated_callback(
+            tok_schema.after_new_access_token_created_callback(access_token)
+        except TypeError:
+            tok_schema.after_new_access_token_created_callback(
                 access_token, refresh_token)
+
+    now = datetime.utcnow()
 
     response.set_cookie(
         current_app.config["ACCESS_COOKIE_NAME"],
         access_token,
         secure=current_app.config["SECURE_TOKEN_COOKIES"],
-        expires=current_app.config["ACCESS_COOKIE_EXPIRATION"],
+        expires=now + current_app.config["ACCESS_COOKIE_EXPIRATION"],
         httponly=True)
     response.set_cookie(
         current_app.config["REFRESH_COOKIE_NAME"],
         refresh_token,
-        expires=current_app.config["REFRESH_COOKIE_EXPIRATION"],
+        expires=now + current_app.config["REFRESH_COOKIE_EXPIRATION"],
         httponly=True,
         secure=current_app.config["SECURE_TOKEN_COOKIES"])
 
@@ -116,6 +180,7 @@ def tokens_required(f):
 
     return f_wrapper
 
+
 def get_current_user():
     """
     Gets the current user after the access token is decoded
@@ -125,5 +190,5 @@ def get_current_user():
 
     if jwt_claims is not None:
         return jwt_claims["user_id"]
-    
+
     return None
