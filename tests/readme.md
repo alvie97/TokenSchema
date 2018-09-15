@@ -153,13 +153,6 @@ def after_new_access_token_generated(refresh_token, access_token):
 
     tok["mapped_token"] = access_token
 
-@tok_schema.refresh_token.user_has_refresh_tokens
-def user_has_refresh_tokens(user_id):
-    for token in refresh_tokens:
-        if token["user_id"] == user_id:
-            return True
-    return False
-
 @tok_schema.refresh_token.revoke_user_refresh_tokens
 def revoke_user_refresh_tokens(user_id="", refresh_token=""):
     user = user_id
