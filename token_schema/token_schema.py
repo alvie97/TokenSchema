@@ -44,7 +44,7 @@ class TokenSchema(object):
 
         app.config.setdefault("ACCESS_COOKIE_NAME", "access_token")
         app.config.setdefault("REFRESH_COOKIE_NAME", "refresh_token")
-        app.config.setdefault("SECURE_TOKEN_COOKIES", False)
+        app.config.setdefault("SECURE_TOKEN_COOKIES", True)
         app.config.setdefault("ACCESS_COOKIE_EXPIRATION",
                               timedelta(seconds=70))
         app.config.setdefault("REFRESH_COOKIE_EXPIRATION", timedelta(days=31))

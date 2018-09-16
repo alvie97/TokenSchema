@@ -16,9 +16,21 @@ class InvalidAccessTokenError(TokenSchemaException):
     """
     pass
 
-class TokenCompromisedError(TokenSchemaException):
+class TokensCompromisedError(TokenSchemaException):
     """
-    Error when the access token or the refresh token is compromised
+    Base exception for compromised tokens
+    """
+    pass
+
+class AccessTokenCompromisedError(TokensCompromisedError):
+    """
+    Error when the access token has been compromised
+    """
+    pass
+
+class RefreshTokenCompromisedError(TokensCompromisedError):
+    """
+    Error when the refresh token has been compromised
     """
     pass
 

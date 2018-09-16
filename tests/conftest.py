@@ -1,7 +1,7 @@
 import pytest
 from flask import Flask, make_response, jsonify, current_app
-from token_schema import (TokenSchema, tokens_required, set_token_cookies,
-                          get_access_token_from_cookie,
+from token_schema import (TokenSchema, get_current_user, access_token_required,
+                          set_token_cookies, get_access_token_from_cookie,
                           get_refresh_token_from_cookie,
                           InvalidAccessTokenError, InvalidRefreshTokenError)
 from datetime import datetime, timedelta
@@ -14,6 +14,7 @@ def app():
     app = Flask(__name__)
     app.config["JWT_SECRET"] = "secret-jwt-key"
     app.config["JWT_ALGORITHM"] = "HS256"
+    app.config["SECURE_TOKEN_COOKIES"] = False
 
     return app
 
@@ -78,9 +79,9 @@ def tok_schema(app, refresh_tokens):
         return token
 
     @app.route("/")
-    @tokens_required
+    @access_token_required
     def test_route():
-        return "test"
+        return jsonify(get_current_user())
 
     @app.route("/set_cookies")
     def set_cookies():
