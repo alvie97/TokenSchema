@@ -1,4 +1,4 @@
-# Token-Auth
+# TokenSchema
 
 This is modules defines a token auth schema for APIs made with flask.
 The schema uses two tokens for authentication and authorization, an access
