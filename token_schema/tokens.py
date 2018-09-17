@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 import jwt
+from flask import current_app
 
 
 def encode_jwt(secret, algorithm, duration, additional_claims=None):
@@ -39,16 +40,12 @@ def decode_jwt(token, secret, algorithm, options=None):
     return jwt.decode(token, secret, algorithms=[algorithm])
 
 
-def create_access_token(user_id, secret, algorithm, duration,
-                        user_claims=None):
+def create_access_token(user_id, user_claims=None):
     """
     Creates access token
 
     :param user_id: id of user who owns this token. can be any identifier like
                     a username, email, uuid, etc.
-    :param secret: key used to sign the token.
-    :param algorithm: algorithm to sign the token.
-    :param duration: time until token expires. Parameter is a timedelta.
     :param user_claims: additional claims to encode in jwt.
     """
 
@@ -57,4 +54,6 @@ def create_access_token(user_id, secret, algorithm, duration,
     if user_claims is not None:
         jwt_claims.update(user_claims)
 
-    return encode_jwt(secret, algorithm, duration, jwt_claims)
+    return encode_jwt(current_app.config["JWT_SECRET"],
+                      current_app.config["JWT_ALGORITHM"],
+                      current_app.config["ACCESS_TOKEN_DURATION"], jwt_claims)

@@ -70,15 +70,13 @@ def create_fresh_access_token(refresh_token, access_token):
             "refresh token and access token compromised")
 
     # generate new access token
-    new_access_token = create_access_token(
-        access_token_claims["user_id"], current_app.config["JWT_SECRET"],
-        current_app.config["JWT_ALGORITHM"],
-        current_app.config["ACCESS_TOKEN_DURATION"])
+    new_access_token = create_access_token(access_token_claims["user_id"])
 
     # run new_access_token_created_callback if defined
     if tok_schema.after_new_access_token_created_callback is not None:
         try:
-            tok_schema.after_new_access_token_created_callback(new_access_token)
+            tok_schema.after_new_access_token_created_callback(
+                new_access_token)
         except TypeError:
             tok_schema.after_new_access_token_created_callback(
                 new_access_token, refresh_token)
@@ -98,11 +96,7 @@ def set_token_cookies(response, user_id, access_token_claims=None):
     tok_schema.revoke_user_refresh_tokens_callback(user_id)
 
     access_token = create_access_token(
-        user_id,
-        current_app.config["JWT_SECRET"],
-        current_app.config["JWT_ALGORITHM"],
-        current_app.config["ACCESS_TOKEN_DURATION"],
-        user_claims=access_token_claims)
+        user_id, user_claims=access_token_claims)
 
     refresh_token = tok_schema.create_refresh_token_callback(
         user_id, access_token)

@@ -2,23 +2,24 @@ from datetime import datetime, timedelta
 from helpers import get_cookie
 
 from token_schema import (
-    create_access_token, decode_jwt, create_fresh_access_token,
+    create_access_token, encode_jwt, decode_jwt, create_fresh_access_token,
     RefreshTokenCompromisedError, AccessTokenCompromisedError,
     InvalidAccessTokenError, InvalidRefreshTokenError, TokensCompromisedError)
 from datetime import timedelta
 from jwt import ExpiredSignatureError
+from flask import current_app
 import pytest
 
 secret = "top-secret"
 algorithm = "HS256"
 
 
-def test_access_token():
-    access_token = create_access_token("test", secret, algorithm,
-                                       timedelta(seconds=10),
-                                       {"test_claim": "test"})
+def test_access_token(app, tok_schema):
+    with app.app_context():
+        access_token = create_access_token("test", {"test_claim": "test"})
 
-    jwt_claims = decode_jwt(access_token, secret, algorithm)
+    jwt_claims = decode_jwt(access_token, app.config["JWT_SECRET"],
+                            app.config["JWT_ALGORITHM"])
 
     assert jwt_claims["user_id"] == "test"
     assert jwt_claims["test_claim"] == "test"
@@ -28,16 +29,15 @@ def test_access_token():
 
 
 def test_access_token_expired():
-    access_token = create_access_token("test", secret, algorithm,
-                                       timedelta(seconds=-10))
+    access_token = encode_jwt(secret, algorithm, timedelta(seconds=-10))
 
     with pytest.raises(ExpiredSignatureError):
         jwt_claims = decode_jwt(access_token, secret, algorithm)
 
 
 def test_decode_jwt_options_parameter():
-    access_token = create_access_token("test", secret, algorithm,
-                                       timedelta(seconds=-10))
+    access_token = encode_jwt(secret, algorithm, timedelta(seconds=-10),
+                              {"user_id": "test"})
 
     jwt_claims = decode_jwt(
         access_token, secret, algorithm, options={"verify_exp": False})
@@ -49,9 +49,9 @@ def test_decode_jwt_options_parameter():
 
 
 def test_create_fresh_access_token(app, tok_schema, refresh_tokens):
-    access_token = create_access_token("test", app.config["JWT_SECRET"],
-                                       app.config["JWT_ALGORITHM"],
-                                       timedelta(seconds=-10))
+    access_token = encode_jwt(app.config["JWT_SECRET"],
+                              app.config["JWT_ALGORITHM"],
+                              timedelta(seconds=-10), {"user_id": "test"})
     refresh_token = tok_schema.create_refresh_token_callback(
         "test", access_token)
 
@@ -68,9 +68,9 @@ def test_create_fresh_access_token(app, tok_schema, refresh_tokens):
 
 def test_create_fresh_access_token_with_non_expired_access_token(
         app, tok_schema):
-    access_token = create_access_token("test", app.config["JWT_SECRET"],
-                                       app.config["JWT_ALGORITHM"],
-                                       timedelta(seconds=10))
+    access_token = encode_jwt(
+        app.config["JWT_SECRET"], app.config["JWT_ALGORITHM"],
+        timedelta(seconds=10), {"user_id": "test"})
 
     refresh_token = tok_schema.create_refresh_token_callback(
         "test", access_token)
@@ -92,17 +92,16 @@ def test_compromised_refresh_token(app, tok_schema):
 
 
 def test_compromised_access_token(app, tok_schema):
-    access_token = create_access_token("test", app.config["JWT_SECRET"],
-                                       app.config["JWT_ALGORITHM"],
-                                       timedelta(seconds=10))
+    with app.app_context():
+        access_token = create_access_token("test")
     invalid_refresh_token = "invalid-refresh-token"
     with pytest.raises(AccessTokenCompromisedError):
         with app.app_context():
             create_fresh_access_token(invalid_refresh_token, access_token)
 
-    access_token = create_access_token("test", app.config["JWT_SECRET"],
-                                       app.config["JWT_ALGORITHM"],
-                                       timedelta(seconds=-10))
+    access_token = encode_jwt(app.config["JWT_SECRET"],
+                              app.config["JWT_ALGORITHM"],
+                              timedelta(seconds=-10), {"user_id": "test"})
     invalid_refresh_token = "invalid-refresh-token"
     with pytest.raises(AccessTokenCompromisedError):
         with app.app_context():
