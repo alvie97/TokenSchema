@@ -1,6 +1,6 @@
 # TokenSchema
 
-This is modules defines a token auth schema for APIs made with flask.
+This module defines a token auth schema for APIs made with flask.
 The schema uses two tokens for authentication and authorization, an access
 token, used to access protected endpoints and a refresh token, used
 to generate new access tokens.
